@@ -969,12 +969,14 @@ static int refcount_overflow_handler(struct pt_regs *regs, unsigned int esr)
 
 static struct break_hook refcount_break_hook = {
 	.fn	= refcount_overflow_handler,
+	.imm	= REFCOUNT_BRK_IMM,
 };
 
 /* This registration must happen early, before debug_traps_init(). */
 void __init trap_init(void)
 {
 	register_kernel_break_hook(&bug_break_hook);
+	register_kernel_break_hook(&refcount_break_hook);
 #ifdef CONFIG_KASAN_SW_TAGS
 	register_kernel_break_hook(&kasan_break_hook);
 #endif
