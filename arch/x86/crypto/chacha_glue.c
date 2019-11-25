@@ -271,24 +271,29 @@ static struct skcipher_alg algs[] = {
 static int __init chacha_simd_mod_init(void)
 {
 	if (!boot_cpu_has(X86_FEATURE_SSSE3))
-		return -ENODEV;
+		return 0;
 
-#ifdef CONFIG_AS_AVX2
-	chacha_use_avx2 = boot_cpu_has(X86_FEATURE_AVX) &&
-			  boot_cpu_has(X86_FEATURE_AVX2) &&
-			  cpu_has_xfeatures(XFEATURE_MASK_SSE | XFEATURE_MASK_YMM, NULL);
-#ifdef CONFIG_AS_AVX512
-	chacha_use_avx512vl = chacha_use_avx2 &&
-			      boot_cpu_has(X86_FEATURE_AVX512VL) &&
-			      boot_cpu_has(X86_FEATURE_AVX512BW); /* kmovq */
-#endif
-#endif
-	return crypto_register_skciphers(algs, ARRAY_SIZE(algs));
+	static_branch_enable(&chacha_use_simd);
+
+	if (IS_ENABLED(CONFIG_AS_AVX2) &&
+	    boot_cpu_has(X86_FEATURE_AVX) &&
+	    boot_cpu_has(X86_FEATURE_AVX2) &&
+	    cpu_has_xfeatures(XFEATURE_MASK_SSE | XFEATURE_MASK_YMM, NULL)) {
+		static_branch_enable(&chacha_use_avx2);
+
+		if (IS_ENABLED(CONFIG_AS_AVX512) &&
+		    boot_cpu_has(X86_FEATURE_AVX512VL) &&
+		    boot_cpu_has(X86_FEATURE_AVX512BW)) /* kmovq */
+			static_branch_enable(&chacha_use_avx512vl);
+	}
+	return IS_REACHABLE(CONFIG_CRYPTO_BLKCIPHER) ?
+		crypto_register_skciphers(algs, ARRAY_SIZE(algs)) : 0;
 }
 
 static void __exit chacha_simd_mod_fini(void)
 {
-	crypto_unregister_skciphers(algs, ARRAY_SIZE(algs));
+	if (IS_REACHABLE(CONFIG_CRYPTO_BLKCIPHER) && boot_cpu_has(X86_FEATURE_SSSE3))
+		crypto_unregister_skciphers(algs, ARRAY_SIZE(algs));
 }
 
 module_init(chacha_simd_mod_init);
@@ -299,7 +304,4 @@ MODULE_AUTHOR("Martin Willi <martin@strongswan.org>");
 MODULE_DESCRIPTION("ChaCha and XChaCha stream ciphers (x64 SIMD accelerated)");
 MODULE_ALIAS_CRYPTO("chacha20");
 MODULE_ALIAS_CRYPTO("chacha20-simd");
-MODULE_ALIAS_CRYPTO("xchacha20");
-MODULE_ALIAS_CRYPTO("xchacha20-simd");
-MODULE_ALIAS_CRYPTO("xchacha12");
 MODULE_ALIAS_CRYPTO("xchacha12-simd");
