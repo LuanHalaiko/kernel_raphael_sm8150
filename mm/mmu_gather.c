@@ -13,8 +13,6 @@
 
 #ifndef CONFIG_MMU_GATHER_NO_GATHER
 
-#ifndef CONFIG_HAVE_MMU_GATHER_NO_GATHER
-
 static bool tlb_next_batch(struct mmu_gather *tlb)
 {
 	struct mmu_gather_batch *batch;
