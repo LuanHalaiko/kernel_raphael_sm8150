@@ -55,13 +55,41 @@ static int poly1305_simd_init(struct shash_desc *desc)
 
 static void poly1305_simd_mult(u32 *a, const u32 *b)
 {
-	u8 m[POLY1305_BLOCK_SIZE];
+	poly1305_init_x86_64(ctx, key);
+}
 
-	memset(m, 0, sizeof(m));
-	/* The poly1305 block function adds a hi-bit to the accumulator which
-	 * we don't need for key multiplication; compensate for it. */
-	a[4] -= 1 << 24;
-	poly1305_block_sse2(a, m, b, 1);
+static void poly1305_simd_blocks(void *ctx, const u8 *inp, size_t len,
+				 const u32 padbit)
+{
+	struct poly1305_arch_internal *state = ctx;
+
+	/* SIMD disables preemption, so relax after processing each page. */
+	BUILD_BUG_ON(SZ_4K < POLY1305_BLOCK_SIZE ||
+		     SZ_4K % POLY1305_BLOCK_SIZE);
+
+	if (!IS_ENABLED(CONFIG_AS_AVX) || !static_branch_likely(&poly1305_use_avx) ||
+	    (len < (POLY1305_BLOCK_SIZE * 18) && !state->is_base2_26) ||
+	    !may_use_simd()) {
+		convert_to_base2_64(ctx);
+		poly1305_blocks_x86_64(ctx, inp, len, padbit);
+		return;
+	}
+
+	do {
+		const size_t bytes = min_t(size_t, len, SZ_4K);
+
+		kernel_fpu_begin();
+		if (IS_ENABLED(CONFIG_AS_AVX512) && static_branch_likely(&poly1305_use_avx512))
+			poly1305_blocks_avx512(ctx, inp, bytes, padbit);
+		else if (IS_ENABLED(CONFIG_AS_AVX2) && static_branch_likely(&poly1305_use_avx2))
+			poly1305_blocks_avx2(ctx, inp, bytes, padbit);
+		else
+			poly1305_blocks_avx(ctx, inp, bytes, padbit);
+		kernel_fpu_end();
+
+		len -= bytes;
+		inp += bytes;
+	} while (len);
 }
 
 static unsigned int poly1305_simd_blocks(struct poly1305_desc_ctx *dctx,
