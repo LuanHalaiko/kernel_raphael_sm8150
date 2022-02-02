@@ -17,15 +17,11 @@
 #include <linux/init.h>
 #include <linux/cpufreq.h>
 #include <linux/cpu.h>
-#include <linux/kthread.h>
 #include <linux/sched.h>
 #include <linux/moduleparam.h>
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/time.h>
-#include <uapi/linux/sched/types.h>
-
-#include <linux/sched/rt.h>
 
 struct cpu_sync {
 	int cpu;
@@ -40,8 +36,9 @@ enum input_boost_type {
 };
 
 static DEFINE_PER_CPU(struct cpu_sync, sync_info);
+static struct workqueue_struct *cpu_boost_wq;
 
-static struct kthread_work input_boost_work;
+static struct work_struct input_boost_work;
 
 static struct kthread_work powerkey_input_boost_work;
 
@@ -240,7 +237,7 @@ static void do_input_boost_rem(struct work_struct *work)
 	}
 }
 
-static void do_input_boost(struct kthread_work *work)
+static void do_input_boost(struct work_struct *work)
 {
 	unsigned int i, ret;
 	struct cpu_sync *i_sync_info;
@@ -270,7 +267,8 @@ static void do_input_boost(struct kthread_work *work)
 			sched_boost_active = true;
 	}
 
-	schedule_delayed_work(&input_boost_rem, msecs_to_jiffies(input_boost_ms));
+	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
+					msecs_to_jiffies(input_boost_ms));
 }
 
 static void do_powerkey_input_boost(struct kthread_work *work)
@@ -319,7 +317,7 @@ static void cpuboost_input_event(struct input_handle *handle,
 	if (now - last_input_time < MIN_INPUT_INTERVAL)
 		return;
 
-	if (queuing_blocked(&cpu_boost_worker, &input_boost_work))
+	if (work_pending(&input_boost_work))
 		return;
 
 	if ((type == EV_KEY && code == KEY_POWER) ||
