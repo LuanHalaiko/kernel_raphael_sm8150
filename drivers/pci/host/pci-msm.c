@@ -6783,8 +6783,9 @@ static struct platform_driver msm_pcie_driver = {
 
 static int __init pcie_init(void)
 {
-	int ret = 0, i;
-	char rc_name[MAX_RC_NAME_LEN];
+	int ret __maybe_unused = 0;
+	int i __maybe_unused;
+	char rc_name[MAX_RC_NAME_LEN] __maybe_unused;
 
 	pr_alert("pcie:%s.\n", __func__);
 
