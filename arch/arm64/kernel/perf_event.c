@@ -177,7 +177,10 @@ armv8pmu_events_sysfs_show(struct device *dev,
 }
 
 #define ARMV8_EVENT_ATTR(name, config)						\
-	PMU_EVENT_ATTR_ID(name, armv8pmu_events_sysfs_show, config)
+	(&((struct perf_pmu_events_attr) {					\
+		.attr = __ATTR(name, 0444, armv8pmu_events_sysfs_show, NULL),	\
+		.id = config,							\
+	}).attr.attr)
 
 static struct attribute *armv8_pmuv3_event_attrs[] = {
 	ARMV8_EVENT_ATTR(sw_incr, ARMV8_PMUV3_PERFCTR_SW_INCR),
